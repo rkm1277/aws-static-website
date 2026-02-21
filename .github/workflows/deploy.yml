@@ -1,0 +1,77 @@
+name: Deploy Static Website to AWS S3
+
+on:
+  push:
+    branches: [ main ]  # Trigger on pushes to main branch
+  workflow_dispatch:     # Allow manual triggering
+
+jobs:
+  deploy:
+    name: Deploy to S3
+    runs-on: ubuntu-latest
+    
+    steps:
+      # Step 1: Checkout the code
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      # Step 2: Configure AWS credentials
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      
+      # Step 3: Setup Terraform
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.5.0
+      
+      # Step 4: Initialize Terraform
+      - name: Terraform Init
+        run: terraform init
+      
+      # Step 5: Format and validate Terraform
+      - name: Terraform Format
+        run: terraform fmt -check
+        continue-on-error: true
+      
+      - name: Terraform Validate
+        run: terraform validate
+      
+      # Step 6: Plan Terraform changes
+      - name: Terraform Plan
+        run: terraform plan
+        continue-on-error: false
+      
+      # Step 7: Apply Terraform changes
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+      
+      # Step 8: Get the bucket name from Terraform output
+      - name: Get bucket name
+        id: bucket-name
+        run: |
+          BUCKET_NAME=$(terraform output -raw bucket_name)
+          echo "BUCKET_NAME=$BUCKET_NAME" >> $GITHUB_ENV
+      
+      # Step 9: Upload website files to S3
+      - name: Upload to S3
+        run: |
+          aws s3 cp index.html s3://${{ env.BUCKET_NAME }}/index.html
+          echo " Uploaded index.html to S3"
+      
+      # Step 10: Output the website URL
+      - name: Get website URL
+        run: |
+          WEBSITE_URL=$(terraform output -raw website_url)
+          echo " Website deployed at: $WEBSITE_URL"
+          echo "WEBSITE_URL=$WEBSITE_URL" >> $GITHUB_ENV
+      
+      # Step 11: Display deployment status
+      - name: Deployment complete
+        run: |
+          echo " Deployment completed successfully!"
+          echo " Your website is available at: ${{ env.WEBSITE_URL }}"
